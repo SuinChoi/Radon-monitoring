@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html>
+<head>
+   <link rel="stylesheet" href="css/maincss.css">
+   <link rel="stylesheet" href="css/Butcss.css">
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.4.0/Chart.min.js"></script>
+   <script src="http://code.jquery.com/jquery-3.2.1.js"></script>
+   <script src="/socket.io/socket.io.js"></script>
+   <title>Hansung Sysco</title>
+</head>
+<body>
+   <div class="warpheader">
+      <div class="header">
+         <!--<img src="logo.gif"> -->
+         <h1>Hansung Sysco MQTT Monitoring Service</h1>
+      </div>
+      <span class="setting">
+         <label for="ipAddInput">IP &nbsp;:&nbsp; </label>
+         <input type="text" name="ipAdd" value="" id="input_IP">
+         <label>&nbsp;&nbsp;&nbsp;&nbsp; </label>
+         <label for="portInput"> PORT&nbsp; : &nbsp;</label>
+         <input type="text" name="port" value="" id="input_port" style = "width:45px">
+         <label>&nbsp;&nbsp;&nbsp;&nbsp; </label>
+         <a href="#" id="connectBtn"  onclick="button_connect_click();" style="display: inline;">Connect</a>
+         <a href="#" id="disconnectBtn" onclick="button_disconnect_click();" style="display: none;">DisConnect</a>
+         <script>
+          function button_connect_click() {                                      // when Connect button is clicked
+            let socket = io();
+            var host = document.getElementById("input_IP").value;             
+            var port = Number(document.getElementById("input_port").value);
+            socket.emit('new:connect', host, port);                              // notify server that user clicks connect button and send host, port 
+            socket.on('new:mqttconnected', onConnect());
+         }          
+         function button_disconnect_click(){                                     // when DisConnect button is clicked
+          let socket = io();
+          socket.emit('new:disconnect');                                         // notify server that user clicks disconnect button 
+          socket.on('new:mqttdisconnected', onConnectionLost());
+       }
+    </script>
+ </span>
+ <hr>
+</div>   
+<span class = "contents">
+   <div class = "topicListPart" >      
+      <h3>SEND</h3>
+      <div class="sendContents" id="sendContents">                               <!-- Send Part --> 
+         <label for="ipAddInput">TOPIC : </label>
+         <input type="text" name="input_topic"  id="input_topic" style="margin-bottom: 5px;">            
+         <br/>
+         <label for="portInput">DATA  &nbsp;: </label>
+         <input type="text" name="input_message" id="input_message" style="margin-bottom: 9px;">
+         <br/>
+         <a href="#" id="sendBtn" onclick="button_publish_click();">       SEND</a>
+         <script type="text/javascript">
+            function button_publish_click() {
+               let socket = io();
+               var topic = document.getElementById("input_topic").value;
+               var msg = document.getElementById("input_message").value;
+               if(topic == ''){                                                  // when topic is empty
+                  topic = 'undefined';
+               }
+               if(msg == ''){                                                    // when message is empty
+                  msg = 'undefined';
+               }
+               var send_message = {
+                  id: id,
+                  message: msg
+               };
+               msg = JSON.stringify(send_message);                               // make data as Json form
+               socket.emit('new:messageSend', topic, msg);                       // notify the server that user sends a message to broker
+                                                                                 // settings for there is no selected topic
+               document.getElementById("textarealog").value =" 시간" + '\t\t' + "아이디" + '\t\t\t' + "데이터";  
+               reset_graph();
+               document.getElementById("selectedTopic").value = "    ";
+            }
+         </script>
+      </div>
+      <hr style="margin:5px;color:#dddddd;margin-top: 30px">
+      <div class="topicContents">
+         <h3 style="margin-left: 15px;">TOPIC</h3>
+         <a href="#" id="clearBtn" onclick="clearall_button_click();">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;CLEAR ALL&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</a> 
+         <a href="#" id="selectedclearBtn" onclick="clearselected_button_click();" >&nbsp;CLEAR SELECTED&nbsp;</a> </h3>
+         <div id="scrollTopicPart" style="margin-top: 10px;"></div>
+         <script type="text/javascript">
+            function clearall_button_click(){                                    // clear all topics and datas                
+               topics.length = 0;
+               topicList.length = 0;
+               timeList.length =0;
+               idList.length = 0;
+               dataList.length = 0;
+               document.getElementById("textarealog").value =" 시간" + '\t\t' + "아이디" + '\t\t\t' + "데이터";
+               document.getElementById("selectedTopic").value = "";  
+               reset_graph();
+               document.getElementById("scrollTopicPart").innerHTML = "";
+            }
+            function clearselected_button_click(){                              // clear selected topic and datas
+               var selected = document.getElementById("selectedTopic").value;   // get sleceted topic's value
+               var topic = document.getElementById(selected);                   // get selected topic
+               var br = document.getElementById(selected + "br");                   
+               for(var i=topicList.length; i>=0; i--){                          // remove the datas of selected topic
+                  if(selected == topicList[i]){
+                     topicList.splice(i,1);
+                     timeList.splice(i,1);
+                     idList.splice(i,1);
+                     dataList.splice(i,1);
+                  }
+               }
+               topics.splice(topics.indexOf(selected),1);
+               document.getElementById("textarealog").value =" 시간" + '\t\t' + "아이디" + '\t\t\t' + "데이터";  
+               document.getElementById("selectedTopic").value = "";
+               reset_graph();
+               document.getElementById("scrollTopicPart").removeChild(topic);
+               document.getElementById("scrollTopicPart").removeChild(br);
+            }
+         </script>
+         <script type="text/javascript">
+            function newDataNotification(t){                                                 // when new data arrived : changig topic colour 
+               var data = document.getElementById(t);
+               data.setAttribute("name", "unclicked");
+            }
+            function addData(t){                                                             // add the new topic on the topicList
+               var data = document.createElement("INPUT");
+               var br = document.createElement("br");
+               data.setAttribute("type", "text");
+               data.setAttribute("value", t);
+               data.readOnly = true;
+               data.setAttribute("onclick", "showLog(this)");
+               data.setAttribute("id",t);
+               br.setAttribute("id",t + "br");
+               var list = document.getElementById("scrollTopicPart").childNodes;
+               if(list.length == 0){
+                  document.getElementById("scrollTopicPart").appendChild(data);
+                  document.getElementById("scrollTopicPart").appendChild(br);
+               }
+               else{                                                                         // sorting alphabetically
+                  for(var i=0;i<list.length;i++){
+                     if(list[i].value > t){
+                        document.getElementById("scrollTopicPart").insertBefore(data,list[i]);
+                        break;
+                     }
+                  }
+                  if(i==list.length){
+                     document.getElementById("scrollTopicPart").appendChild(data);
+                     document.getElementById("scrollTopicPart").appendChild(br);
+                  }
+               }
+            }
+            function showLog(element){                                                       // when topic is selected
+               reset_graph();                                                                // initialize the graph
+               document.getElementById("textarealog").value =" 시간" + '\t\t' + "아이디" + '\t\t\t' + "데이터";  
+               document.getElementById("selectedTopic").value = element.value;   
+               for(var i=0; i<topicList.length; i++){                                          
+                  if(topicList[i] == element.value){                                         // find selected topic in the topicList
+                     document.getElementById("textarealog").value += '\n '; 
+                     document.getElementById("textarealog").value += timeList[i] + '\t';
+                     document.getElementById("textarealog").value += pad(idList[i], 20)  + '\t';
+                     document.getElementById("textarealog").value += dataList[i] ;
+                     if (isNaN(dataList[i]) == false){                                       // if the data is number
+                        update_graph(dataList[i], timeList[i], element.value);               // draw the graph
+                     }
+                  }
+                  var objDiv = document.getElementById("textarealog");           
+                  objDiv.scrollTop = objDiv.scrollHeight;
+                  element.setAttribute("name", "clicked");
+               }
+            }
+            function pad(n, width) {                                                         // this function is for arrange the space on the log
+               n = n + '';
+               return n.length >= width ? n : n + new Array(width - n.length + 1).join(' ') ;
+            }
+         </script>
+      </div>
+   </div>
+   <div class="logPart">
+      <div class="log">
+         <label for="selectedTopic" >TOPIC : </label>
+         <input type="text" name="topic" id="selectedTopic">
+         <br/>
+         <br/>
+         <textarea id="textarealog" readonly="true" style="width:90%;height:100%;resize: none;overflow:auto" >  시간           아이디                  데이터         </textarea>
+      </div>            
+      <hr style="margin-top: 70px;">
+      <div class="graph">
+         <canvas id="line-chart" style="width:100%;height:100%;"></canvas>
+         <script>
+            var count = 0;
+      var ctx = document.getElementById("line-chart");                                   // get the canvas
+      var myChart = new Chart(ctx, {
+        type: 'line',                                                                     // optons for drawing graph
+        data: {
+          labels: [],                                                                     // title of x axis
+          datasets: [{
+           label:[],
+           data: [],
+           backgroundColor: [
+           'rgba(255, 99, 132, 0.2)'
+           ],
+           borderColor: [
+           'rgba(255,99,132,1)'
+           ],
+        }]
+     },
+     options: {
+      maintainAspectRatio: false,
+      display: true,   
+      elements:{
+         line:{
+            tension : 0
+         }
+      },
+      "hover": {
+         "animationDuration": 0
+      },
+      "animation": {
+         "duration": 1,
+         "onComplete": function () {
+            var chartInstance = this.chart,
+            ctx = chartInstance.ctx;
+
+            ctx.font = Chart.helpers.fontString(Chart.defaults.global.defaultFontSize, Chart.defaults.global.defaultFontStyle, Chart.defaults.global.defaultFontFamily);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillStyle = '#ff0000';
+
+            this.data.datasets.forEach(function (dataset, i) {
+               var meta = chartInstance.controller.getDatasetMeta(i);
+               meta.data.forEach(function (bar, index) {
+                  var data = dataset.data[index];
+                  ctx.fillText(data, bar._model.x, bar._model.y - 5);
+               });
+            });
+         }
+      },
+   }
+});
+
+      function update_graph(data, time, topic) {
+         var len = myChart.data.datasets[0].data.length;
+         myChart.data.datasets[0].label = topic;
+         if(len <10){                                                               // when datas are less than 10
+            myChart.data.datasets[0].data[count] = data;
+            myChart.data.labels[count] = time;
+            count ++;
+         }      
+         else{                                                                      // when datas are more than 10
+            for(var i=0;i<len-1;i++){
+               myChart.data.datasets[0].data[i] = myChart.data.datasets[0].data[i+1];
+               myChart.data.labels[i] = myChart.data.labels[i+1];
+            }         
+            myChart.data.datasets[0].data[len-1] = data;   
+         }       
+         myChart.update();
+      }
+
+      function reset_graph(){                                                       // remove the graph              
+         myChart.data.datasets[0].data.length = 0; 
+         myChart.data.labels.length = 0;
+         count = 0;
+         myChart.data.datasets[0].label ="";
+         myChart.update();
+      }
+   </script>
+</div>
+</div>
+</span>
+<script type="text/javascript" language="javascript">
+   var id = "Web_with_TLS";                                                      // id used on Mqtt Broker
+   var topics=[];                                                                // topics for showing topicList, it means there is no overlap
+   var timeList = [], idList = [], topicList = [], dataList = [];                // real datas used for showing log
+   let socket = io();
+   socket.on('new:messageArrived', function(topic, message){                     // called when new message arrived 
+      console.log("new message arrived!");
+      var d = new Date();
+      topicList.push(topic);                                                     // add topic in topicList
+      var dd = (("00" + d.getHours()).slice(-2) + ":" + ("00" + d.getMinutes()).slice(-2) + ":" + ("00" + d.getSeconds()).slice(-2));   // set date form
+      timeList.push(dd);                                                         // add time in timeList
+      if(IsJsonString(message)){                                                 // if message is Json form
+         var rawData = JSON.parse(message);                                      // parse the Json                  
+         idList.push(rawData.id);                                                // add id in idList
+         dataList.push(rawData.message);                                         // add data in dataList
+      }
+      else{                                                                      // if message is not Json form
+         idList.push("undefined");                                               // add "undefined" in idList
+         dataList.push(message);                                                 // add data in dataList
+      }    
+      if(topics.indexOf(topic) == -1){                                           // if there is no topic in the topics (topics has no overlap)
+         topics.push(topic);                                                     // add topic in topics
+         addData(topic);                                                         // update the topicList
+      }
+      else {                                                                     // if topic already exists in the topics
+         if(document.activeElement.value == topic){                              // if topic has focus 
+            showLog(document.getElementById(topic));                             // update log
+         }
+      }
+      newDataNotification(topic);                                                // Notify new data comes -> change the colour of topic on topicList
+   });                                      
+   socket.on('error',function(e){                                                // called when error occurs                              
+      alert('ERROR : ' + e);
+      console.log(e);
+      onConnectionLost();
+   })
+   function IsJsonString(str) {                                                  // is Json form?                         
+      if(typeof(str) == 'number')
+         return false;
+      try {
+         JSON.parse(str);
+      } catch (e) {
+         return false;
+      }
+      return true;
+   }
+   function onConnect() {
+      console.log("Connected!");
+      var a = document.getElementById("connectBtn");
+      var b = document.getElementById("disconnectBtn");
+      a.style.display = 'none';
+      b.style.display = 'inline';
+   }
+   function onConnectionLost() {
+      console.log("Connecttion lost!")
+      var a = document.getElementById("connectBtn");
+      var b = document.getElementById("disconnectBtn");
+      b.style.display = 'none';
+      a.style.display = 'inline';
+   }
+</script>
+</body>
+</html>
